@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const app = express();
+const bodyParser = require("body-parser")
 const dns = require("dns")
 const mongoose = require("mongoose");
 const { url } = require('inspector');
@@ -16,7 +17,7 @@ const urlSchema = mongoose.Schema({
   }
 })
 
-const URL = mongoose.model("url",urlSchema)
+const URLModel = mongoose.model("url",urlSchema)
 
 
 // Basic Configuration
@@ -25,7 +26,9 @@ const port = process.env.PORT || 3000;
 
 app.use(cors());
 
-app.use(express.json())
+// app.use(bodyParser.json())
+app.use(express.json({limit:"32kb"}))
+app.use(express.urlencoded({extended:true, limit:"32kb"}))
 
 app.use('/public', express.static(`${process.cwd()}/public`));
 
@@ -35,24 +38,36 @@ app.get('/', function(req, res) {
 
 
 app.post("/api/shorturl",async(req,res)=>{
-  const url = URL(req.body.url)
-
-  dns.lookup(url.hostname,async(err,address,family)=>{
-    if (err) return res.json({error: 'invalid url'})
-
-    const urlobj = await URL.create({original_url:url})
-
-    return res.json({
-      original_url: urlobj.original_url,
-      short_url: urlobj._id
+  try {
+    console.log(req.body.url);
+    const url = new URL(req.body.url)
+    console.log(url.hostname);
+  
+    dns.lookup(url.hostname,async(err,address,family)=>{
+      if (err) return res.json({error: 'invalid url'})
+  
+      const urlobj = await URLModel.create({original_url:url})
+      const urlobjnew = await URLModel.findById(urlobj._id)
+  
+      if (urlobjnew) {
+        return res.json({
+          original_url: urlobj.original_url,
+          short_url: urlobj._id
+        })
+      }
+      else return res.json({error: "error"})
     })
-  })
+  } catch (error) {
+    return res.json({error: error})
+  }
 
 })
 
 
-app.get("api/shorturl/:urlshort",async(req,res)=>{
-  const url = await URL.findById(req.params.urlshort);
+app.get("/api/shorturl/:urlshort",async(req,res)=>{
+  const url = await URLModel.findById(req.params.urlshort);
+
+  console.log(url);
 
   if(url) return res.redirect(url.original_url)
   else return res.json({error: 'invalid url'})
